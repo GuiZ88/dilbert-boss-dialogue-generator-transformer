@@ -7,6 +7,7 @@
   <p align="center">
 The main purpose of this repository  is the generation of dialogues, the training and practical implementation of the Transformer architecture and the prediction script. Through the use of the Python language and the Tensor Flow and Karas libraries.
 This is the fourth phase of the project following the construction of the dataset. the previous three in order are
+</p>
 <ol>
 <li>[dilbert-cascade-classifier by GuiZ88](project https://github.com/GuiZ88/dilbert-cascade-classifier)</li>
 <li>[dilbert-boss-cascade-classifier by GuiZ88](project https://github.com/GuiZ88/dilbert-text-extractor)</li>
