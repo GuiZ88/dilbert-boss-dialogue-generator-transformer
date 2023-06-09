@@ -7,6 +7,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
+#os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import sys
 from time import time
 import tensorflow as tf
@@ -18,6 +19,8 @@ from tranformer_classes import MultiHeadAttentionLayer
 from tranformer_classes import PositionalEncoding
 from tranformer_classes import preprocess_sentence
 from tranformer_classes import load_conversations
+from tranformer_classes import create_padding_mask
+from tranformer_classes import create_look_ahead_mask
 
 tf.keras.utils.set_random_seed(1234)
 strategy = tf.distribute.get_strategy()
@@ -40,14 +43,20 @@ D_MODEL = 256
 NUM_HEADS = 8
 UNITS = 512
 DROPOUT = 0.1
-EPOCHS = 40
+EPOCHS = 68
 
-questions, answers = load_conversations()
+# input boss - output dilbert
+#train boss
+#answers, questions  = load_conversations()
+
+# train dilbert
+questions, answers  = load_conversations()
 
 #print(f"Sample question: {questions[20]}")
 #print(f"Sample answer: {answers[20]}")
 
 # Build tokenizer using tfds for both questions and answers
+
 tokenizer = tfds.deprecated.text.SubwordTextEncoder.build_from_corpus(
     answers + questions, target_vocab_size=2**15
 )
@@ -85,7 +94,8 @@ def tokenize_and_filter(inputs, outputs):
     return tokenized_inputs, tokenized_outputs
 
 
-questions, answers = tokenize_and_filter(questions, answers)
+#questions, answers = tokenize_and_filter(questions, answers)
+answers, questions = tokenize_and_filter(questions, answers)
 
 
 print(f"Vocab size: {VOCAB_SIZE}")
@@ -111,25 +121,15 @@ dataset = dataset.prefetch(tf.data.AUTOTUNE)
 print(dataset)
 
 
-def create_padding_mask(x):
-    mask = tf.cast(tf.math.equal(x, 0), tf.float32)
-    # (batch_size, 1, 1, sequence length)
-    return mask[:, tf.newaxis, tf.newaxis, :]
+"""sample_pos_encoding = PositionalEncoding(10, 50, name="sample_pos_encoding")
 
-#print(create_padding_mask(tf.constant([[1, 2, 0, 3, 0], [0, 0, 0, 4, 5]])))
+plt.pcolormesh(sample_pos_encoding.pos_encoding.numpy()[0], cmap="RdBu")
+plt.xlabel("Depth")
+plt.xlim((0, 512))
+plt.ylabel("Position")
+plt.colorbar()
+plt.show()"""
 
-
-
-def create_look_ahead_mask(x):
-    seq_len = tf.shape(x)[1]
-    look_ahead_mask = 1 - tf.linalg.band_part(tf.ones((seq_len, seq_len)), -1, 0)
-    padding_mask = create_padding_mask(x)
-    return tf.maximum(look_ahead_mask, padding_mask)
-
-
-#print(create_look_ahead_mask(tf.constant([[1, 2, 0, 4, 5]])))
-
-sample_pos_encoding = PositionalEncoding(50, 512, name="sample_pos_encoding")
 
 
 def encoder_layer(units, d_model, num_heads, dropout, name="encoder_layer"):
@@ -153,9 +153,9 @@ def encoder_layer(units, d_model, num_heads, dropout, name="encoder_layer"):
 
 
 
-sample_encoder_layer = encoder_layer(
-    units=512, d_model=128, num_heads=4, dropout=0.3, name="sample_encoder_layer"
-)
+#sample_encoder_layer = encoder_layer(
+#    units=512, d_model=128, num_heads=4, dropout=0.3, name="sample_encoder_layer"
+#)
 
 
 
@@ -185,18 +185,17 @@ def encoder(vocab_size, num_layers, units, d_model, num_heads, dropout, name="en
 
 
 
-sample_encoder = encoder(
-    vocab_size=8192,
+"""sample_encoder = encoder(
+    vocab_size=1000,
     num_layers=2,
     units=512,
-    d_model=128,
+    d_model=512,
     num_heads=4,
     dropout=0.3,
     name="sample_encoder",
-)
+)"""
 
-
-
+#tf.keras.utils.plot_model(sample_encoder, to_file="encoder.png", show_shapes=True)
 
 
 def decoder_layer(units, d_model, num_heads, dropout, name="decoder_layer"):
@@ -205,7 +204,7 @@ def decoder_layer(units, d_model, num_heads, dropout, name="decoder_layer"):
     look_ahead_mask = tf.keras.Input(shape=(1, None, None), name="look_ahead_mask")
     padding_mask = tf.keras.Input(shape=(1, 1, None), name="padding_mask")
 
-    attention1 = MultiHeadAttentionLayer(d_model, num_heads, name="attention_1")(
+    attention_first = MultiHeadAttentionLayer(d_model, num_heads, name="attention_first")(
         inputs={
             "query": inputs,
             "key": inputs,
@@ -213,25 +212,25 @@ def decoder_layer(units, d_model, num_heads, dropout, name="decoder_layer"):
             "mask": look_ahead_mask,
         }
     )
-    add_attention = tf.keras.layers.add([attention1, inputs])
-    attention1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)(add_attention)
+    add_attention = tf.keras.layers.add([attention_first, inputs])
+    attention_first = tf.keras.layers.LayerNormalization(epsilon=1e-6)(add_attention)
 
-    attention2 = MultiHeadAttentionLayer(d_model, num_heads, name="attention_2")(
+    attention_second = MultiHeadAttentionLayer(d_model, num_heads, name="attention_second")(
         inputs={
-            "query": attention1,
+            "query": attention_first,
             "key": enc_outputs,
             "value": enc_outputs,
             "mask": padding_mask,
         }
     )
-    attention2 = tf.keras.layers.Dropout(rate=dropout)(attention2)
-    add_attention = tf.keras.layers.add([attention2, attention1])
-    attention2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)(add_attention)
+    attention_second = tf.keras.layers.Dropout(rate=dropout)(attention_second)
+    add_attention = tf.keras.layers.add([attention_second, attention_first])
+    attention_second = tf.keras.layers.LayerNormalization(epsilon=1e-6)(add_attention)
 
-    outputs = tf.keras.layers.Dense(units=units, activation="relu")(attention2)
+    outputs = tf.keras.layers.Dense(units=units, activation="relu")(attention_second)
     outputs = tf.keras.layers.Dense(units=d_model)(outputs)
     outputs = tf.keras.layers.Dropout(rate=dropout)(outputs)
-    add_attention = tf.keras.layers.add([outputs, attention2])
+    add_attention = tf.keras.layers.add([outputs, attention_second])
     outputs = tf.keras.layers.LayerNormalization(epsilon=1e-6)(add_attention)
 
     return tf.keras.Model(
@@ -239,15 +238,6 @@ def decoder_layer(units, d_model, num_heads, dropout, name="decoder_layer"):
         outputs=outputs,
         name=name,
     )
-
-
-
-sample_decoder_layer = decoder_layer(
-    units=512, d_model=128, num_heads=4, dropout=0.3, name="sample_decoder_layer"
-)
-
-
-
 
 def decoder(vocab_size, num_layers, units, d_model, num_heads, dropout, name="decoder"):
     inputs = tf.keras.Input(shape=(None,), name="inputs")
@@ -279,7 +269,6 @@ def decoder(vocab_size, num_layers, units, d_model, num_heads, dropout, name="de
     )
 
 
-
 sample_decoder = decoder(
     vocab_size=8192,
     num_layers=2,
@@ -289,6 +278,8 @@ sample_decoder = decoder(
     dropout=0.3,
     name="sample_decoder",
 )
+
+tf.keras.utils.plot_model(sample_decoder, to_file="decoder.png", show_shapes=True)
 
 
 
@@ -335,6 +326,8 @@ def transformer(
 
 
 
+
+
 sample_transformer = transformer(
     vocab_size=8192,
     num_layers=4,
@@ -345,6 +338,9 @@ sample_transformer = transformer(
     name="sample_transformer",
 )
 
+tf.keras.utils.plot_model(
+    sample_transformer, to_file="transformer.png", show_shapes=True
+)
 
 
 
@@ -361,9 +357,9 @@ def loss_function(y_true, y_pred):
     return tf.reduce_mean(loss)
 
 
-class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+class CustomRateSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
     def __init__(self, d_model, warmup_steps=4000):
-        super(CustomSchedule, self).__init__()
+        super(CustomRateSchedule, self).__init__()
 
         self.d_model = tf.constant(d_model, dtype=tf.float32)
         self.warmup_steps = warmup_steps
@@ -372,29 +368,36 @@ class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
         return {"d_model": self.d_model, "warmup_steps": self.warmup_steps}
 
     def __call__(self, step):
+        step = tf.cast(step, tf.float32)
         arg1 = tf.math.rsqrt(step)
         arg2 = step * (self.warmup_steps**-1.5)
 
         return tf.math.multiply(
             tf.math.rsqrt(self.d_model), tf.math.minimum(arg1, arg2)
-        ) + 0.0
+        ) 
 
 
-sample_learning_rate = CustomSchedule(d_model=128)
+sample_learning_rate = CustomRateSchedule(d_model=128)
 
 print("sample_learning_rate")
 print('Result: ', sample_learning_rate)
 
 
 
+#sample_learning_rate = CustomSchedule(d_model=128)
+
+#plt.plot(sample_learning_rate(tf.range(200000, dtype=tf.float32)))
+#plt.ylabel("Learning Rate")
+#plt.xlabel("Train Step")
+#plt.show()
+
+
 # clear backend
 tf.keras.backend.clear_session()
 
-learning_rate = CustomSchedule(d_model=D_MODEL)
-print("learning_rate")
-print(learning_rate)
+l_rate = CustomRateSchedule(d_model=D_MODEL)
 optimizer = tf.keras.optimizers.Adam(
-    0.001, beta_1=0.9, beta_2=0.98, epsilon=1e-9
+    learning_rate=l_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9
 )
 
 
@@ -420,7 +423,7 @@ with strategy.scope():
 model.summary()
 
 
-model.fit(dataset, epochs=EPOCHS)
+history = model.fit(dataset, epochs=EPOCHS)
 
 
 #model_filename_boss = "model_boss.h5"
@@ -428,6 +431,35 @@ model_filename = "model_dilbert.h5"
 tf.keras.models.save_model(model, filepath=model_filename, include_optimizer=False)
 
 #tf.keras.models.save_model(model, filepath=model_filename_boss, include_optimizer=False)
+
+print(history.params)
+print(history.history.keys())
+
+
+
+# Retrieve each dictionary's values
+train_values = history.history['loss']
+val_values = history.history['accuracy']
+
+# Generate a sequence of integers to represent the epoch numbers
+epochs = range(1, 69)
+
+# Plot and label the training and validation loss values
+plt.plot(epochs, train_values, label='Training Loss')
+plt.plot(epochs, val_values, label='Validation Loss')
+
+# Add in a title and axes labels
+plt.title('Training and Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+
+# Set the tick locations
+from numpy import arange
+#plt.xticks(arange(0, 3, 2))
+
+# Display the plot
+plt.legend(loc='best')
+plt.show()
 
 sys.exit()
 del model
