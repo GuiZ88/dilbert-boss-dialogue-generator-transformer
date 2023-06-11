@@ -5,6 +5,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import re
 import tensorflow as tf
 import tensorflow_datasets as tfds
+import random
 
 # import classes
 from tranformer_classes import MultiHeadAttentionLayer
@@ -14,13 +15,13 @@ from tranformer_classes import load_conversations
 from tranformer_classes import create_padding_mask
 from tranformer_classes import create_look_ahead_mask
 
-tf.keras.utils.set_random_seed(1234)
+#tf.keras.utils.set_random_seed(1234)
 strategy = tf.distribute.get_strategy()
 
 print(f"Tensorflow version {tf.__version__}")
 
 # Maximum sentence length
-MAX_LENGTH = 40
+MAX_LENGTH = 20
 
 questions, answers = load_conversations()
 tokenizer = tfds.deprecated.text.SubwordTextEncoder.build_from_corpus(
@@ -124,15 +125,35 @@ def predict_boss(sentence):
     return predicted_sentence
 
 
-sentence_quest = " are you trying to kill us? "
+print("\n STARTS BOSS \n")
+sentence_quest = "it's friday!"
+#sentence_quest = questions[random.randint(0, len(questions))]
+#sentence_quest = "are you trying to kill us? "
 sentence_answ = ""
 sentence_cumulative = sentence_quest
 for _ in range(3):    
-    print(f"Boss: {sentence_quest}\n")
+    print(f"Boss: {sentence_quest}")
 
     sentence_answ = predict_dilbert("{}".format(sentence_cumulative))
     sentence_cumulative = "{} {}".format(sentence_cumulative, sentence_answ)
-    print(f"Dilbert: {sentence_answ}")
-
+    print(f"Dilbert: {sentence_answ}\n")
+    
     sentence_quest = predict_boss("{}".format(sentence_cumulative))    
+    sentence_cumulative = "{} {}".format(sentence_cumulative, sentence_quest)
+
+
+print("\n STARTS DILBERT \n")
+sentence_quest = "it's friday!"
+#sentence_quest = answers[random.randint(0, len(answers))]
+#sentence_quest = "are you trying to kill us? "
+sentence_answ = ""
+sentence_cumulative = sentence_quest
+for _ in range(3):    
+    print(f"Dilbert: {sentence_quest}")
+
+    sentence_answ = predict_boss("{}".format(sentence_cumulative))
+    sentence_cumulative = "{} {}".format(sentence_cumulative, sentence_answ)
+    print(f"Boss: {sentence_answ}\n")
+
+    sentence_quest = predict_dilbert("{}".format(sentence_cumulative))    
     sentence_cumulative = "{} {}".format(sentence_cumulative, sentence_quest)

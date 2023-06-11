@@ -22,7 +22,7 @@ strategy = tf.distribute.get_strategy()
 print(f"Tensorflow version {tf.__version__}")
 
 # Maximum sentence length
-MAX_LENGTH = 40
+MAX_LENGTH = 15
 
 # For tf.data.Dataset
 BATCH_SIZE = 64 * strategy.num_replicas_in_sync
@@ -34,10 +34,13 @@ D_MODEL = 256
 NUM_HEADS = 8
 UNITS = 512
 DROPOUT = 0.1
-EPOCHS = 80
+EPOCHS = 90
 
 # train dilbert
 answers, questions  = load_conversations()
+
+print(len(answers))
+print(len(questions))
 
 # build tokenizer 
 tokenizer = tfds.deprecated.text.SubwordTextEncoder.build_from_corpus(
@@ -73,7 +76,7 @@ def tokenize_and_filter(inputs, outputs):
 
     return tokenized_inputs, tokenized_outputs
 
-answers, questions = tokenize_and_filter(questions, answers)
+questions, answers = tokenize_and_filter(questions, answers)
 
 # decoder inputs use the previous target as input
 dataset = tf.data.Dataset.from_tensor_slices(
