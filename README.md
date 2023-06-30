@@ -2,7 +2,7 @@
 
 <br />
 <div align="center">
-  <h3 align="center">Dilbert & Boss - Dialogue Generator Trasnformer</h3>
+  <h3 align="center">Dilbert & Boss - Dialogue Generator Transformer</h3>
 
   <p align="center">
 The main purpose of this repository  is the generation of dialogues, the training and practical implementation of the Transformer architecture and the prediction script. Through the use of the Python language and the Tensor Flow and Karas libraries.
